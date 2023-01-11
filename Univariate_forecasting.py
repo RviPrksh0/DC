@@ -1,3 +1,4 @@
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -15,9 +16,10 @@ from sklearn.metrics import r2_score, mean_absolute_error
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 from prophet.diagnostics import performance_metrics
 from statsmodels.tsa.seasonal import seasonal_decompose
+year_list=[2018,2019,2020,2021,2022,2023]
 holidays = make_holidays_df(year_list=year_list, country='UK')
 
-def create_train_test_frame_(dff , threshold = '01/07/2012',parameter='price'):
+def create_train_test_frame_(dff , threshold ,parameter):
     df=copy.deepcopy(dff)
     df.rename(columns={'date':'ds',parameter:'y'},inplace=True)
     threshold_date = pd.to_datetime(threshold)
@@ -30,7 +32,7 @@ def create_train_test_frame_(dff , threshold = '01/07/2012',parameter='price'):
     return df_train, df_test, threshold_date, dx
 #df_train, df_test, threshold_date, dx = create_train_test_frame_(dff,parameter='price')
 
-def test_train_visualize(df_train, df_test):
+def test_train_visualize(df_train, df_test,threshold_date):
     fig, ax = plt.subplots(1, 1, figsize=(15, 10))
     sns.lineplot(x='ds', y='y', label='y_train', data=df_train, ax=ax)
     sns.lineplot(x='ds', y='y', label='y_test', data=df_test, ax=ax)
@@ -63,9 +65,9 @@ def build_model():
     return model
 #model_project = build_model()
 
-def project_visualize(model = model_project, data=dx, threshold_date = threshold_date,train= df_train, test = df_test,forecast_length=170):
+def project_visualize(model, data, threshold_date ,train, test,forecast_length=170):
 
-    threshold_test=df_test['ds'].iloc[-1]
+    threshold_test=test['ds'].iloc[-1]
   ## make model
     model.fit(data)
     future = model.make_future_dataframe(periods=forecast_length, freq='D')
@@ -106,8 +108,8 @@ def project_visualize(model = model_project, data=dx, threshold_date = threshold
     return forecast, test2, forecast_train, forecast_test
 #forecast, test2, forecast_train, forecast_test = project_visualize(model = model_project, data = dx, threshold_date = threshold_date,train= df_train, test = df_test)
 
-def error_analysis_back_testing(nx = 103, df_train = df_train, df_test = df_test, forecast_train = forecast_train, forecast_test = forecast_test, forecast = forecast, model = model_project):
-    n = nx
+def error_analysis_back_testing(df_train, df_test, forecast_train, forecast_test, forecast, model):
+
     print('r2 train: {}'.format(r2_score(y_true=df_train['y'], y_pred=forecast_train['yhat'])))
     print('r2 test: {}'.format(r2_score(y_true=df_test['y'], y_pred=forecast_test['yhat'])))
     print('---'*10)
@@ -177,7 +179,7 @@ def error_analysis_back_testing(nx = 103, df_train = df_train, df_test = df_test
       horizon = '180 days'
     )
     df_p = performance_metrics(df=df_cv, rolling_window=0.1)
-    fig = plot_cross_validation_metric(df_cv=df_cv, metric='mape', rolling_window=0.1, figsize=(15, 10))
+    #fig = plot_cross_validation_metric(df_cv=df_cv, metric='mape', rolling_window=0.1, figsize=(15, 10))
     return None
 #error_analysis_back_testing(nx = 62, df_train = df_train, df_test = df_test, forecast_train = forecast_train, forecast_test = forecast_test, forecast = forecast)
 
@@ -193,15 +195,17 @@ def univariate_forecasting(data,forecast_length,save_path,parameter):
     Following function does step modelling for price and for the rest uses prophet for univariate prediction and saves the file in given location.
     '''
     df=copy.deepcopy(data)
-    threshold_id=len(df)//4
+    threshold_id=3*len(df)//4
     threshold=str(df['date'][threshold_id])
 
     df=df[['date',parameter]]
 
     if parameter=='price' or parameter=='Price':
         df_price=copy.deepcopy(df)
+        df_price['date'] = pd.to_datetime(df_price['date'])#.astype('datetime64[ns]')
         df_price.set_index('date',inplace=True)
-        df_price.index.freq='D'
+        print(df_price.index)
+        #df_price.index.freq='D'
 
         result_add = seasonal_decompose(df_price[parameter], model='additive', extrapolate_trend='freq')
         result_mul = seasonal_decompose(df_price[parameter], model='multiplicative', extrapolate_trend='freq')
@@ -244,7 +248,7 @@ def univariate_forecasting(data,forecast_length,save_path,parameter):
     else:
         ## Creating Train test dataset
         df_train, df_test, threshold_date, dx = create_train_test_frame_(df, threshold,parameter )
-        test_train_visualize(df_train, df_test)
+        test_train_visualize(df_train, df_test,threshold_date)
         
         model_project = build_model()
         
@@ -252,7 +256,7 @@ def univariate_forecasting(data,forecast_length,save_path,parameter):
         forecast, test2, forecast_train, forecast_test = project_visualize(model = model_project, data = dx, threshold_date = threshold_date,train= df_train, test = df_test,forecast_length=forecast_length)
         
         ## Analysing Result
-        error_analysis_back_testing(nx = 62, df_train = df_train, df_test = df_test, forecast_train = forecast_train, forecast_test = forecast_test, forecast = forecast)
+        error_analysis_back_testing( df_train = df_train, df_test = df_test, forecast_train = forecast_train, forecast_test = forecast_test, forecast = forecast,model=model_project)
         test2.to_csv(save_path+f'Univariate forecast {parameter}.csv')
     return forecast, test2, forecast_train, forecast_test
     
